@@ -35,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
@@ -91,7 +92,7 @@ fun HomeSurface(c: LauncherController, win: WindowSpec, view: ViewParams, modifi
         settings.gridDensity, max(1, dockKeys.size), settings.showLabels, win.hinge,
     )
     val geo = remember(input) { GeometryEngine.compute(input) }
-    val pageCount = Paging.pageCount(homeKeys.size, cap, c.editing)
+    val pageCount = Paging.pairedPageCount(homeKeys.size, cap, c.editing)
     val paneTotal = Paging.paneCount(pageCount)
     val focus = settings.focusPane.coerceIn(0, paneTotal - 1)
     val spread = Paging.spreadForFocus(focus, geo.duo, paneTotal)
@@ -106,6 +107,7 @@ fun HomeSurface(c: LauncherController, win: WindowSpec, view: ViewParams, modifi
     val morph = remember { MorphState() }
     val prev = remember { Prev() }
     val intensity = settings.animationIntensity
+    val veilMax = Morph.veilAlpha(intensity)
     val token = remember(places) {
         beginMorph(c, morph, prev, input, geo, places, spread, view, intensity, pageCount, homeKeys, dockKeys)
     }
@@ -350,12 +352,26 @@ fun HomeSurface(c: LauncherController, win: WindowSpec, view: ViewParams, modifi
             ) { AppIconImage(c, dk, with(density) { iconPx.toDp() }) }
         }
 
-        // ---- frost veil that clears as the layout expands (draw-phase only: no per-frame recomposition)
+        // ---- frosted-glass veil: clears outward from the hinge (draw-phase only: no per-frame recomposition)
         Box(
             Modifier.fillMaxSize().drawBehind {
                 if (morph.active && morph.label == "fold") {
-                    val a = (1f - Morph.cubic(morph.progress)) * 0.15f
-                    if (a > 0.003f) drawRect(Color.White.copy(alpha = a))
+                    val p = Morph.cubic(morph.progress)
+                    val maxR = hypot(size.width, size.height) * 0.62f
+                    val soft = maxR * 0.5f
+                    val radius = maxR + soft
+                    val a = veilMax * (1f - p * p)
+                    if (a > 0.004f) {
+                        val clear = (maxR * p / radius).coerceIn(0f, 0.98f)
+                        val edge = ((maxR * p + soft) / radius).coerceIn(clear + 0.01f, 1f)
+                        val frost = Color(0xFFE9EEFF).copy(alpha = a)
+                        drawRect(
+                            Brush.radialGradient(
+                                0f to Color.Transparent, clear to Color.Transparent, edge to frost, 1f to frost,
+                                center = Offset(morph.originX, morph.originY), radius = radius,
+                            ),
+                        )
+                    }
                 }
             },
         )
@@ -379,7 +395,7 @@ private fun beginMorph(
         if (memo != null && System.currentTimeMillis() - memo.atMs < 8000 && memo.input != input) {
             val og = GeometryEngine.compute(memo.input)
             val cap = Settings.capacityFor(memo.input.gridDensity)
-            val pc = Paging.pageCount(homeKeys.size, cap, false)
+            val pc = Paging.pairedPageCount(homeKeys.size, cap, false)
             val pt = Paging.paneCount(pc)
             val f = memo.focus.coerceIn(0, pt - 1)
             val s = Paging.spreadForFocus(f, og.duo, pt)

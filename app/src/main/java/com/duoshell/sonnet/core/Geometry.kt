@@ -102,10 +102,10 @@ object GeometryEngine {
         val dockVertical = when (inp.dockPlacement) {
             DockPlacement.SIDE -> true
             DockPlacement.BOTTOM -> false
-            DockPlacement.AUTO -> duo || landscape
+            DockPlacement.AUTO -> false // iOS-style floating bottom dock, wider when unfolded
         }
         val dockRight = inp.dockSide == DockSide.RIGHT
-        val islandRight = !dockRight
+        val islandRight = false
 
         val margin = 10f * d
         val pad = 10f * d
@@ -122,11 +122,12 @@ object GeometryEngine {
         val dockLong = n * dockIcon + (n - 1) * gap + 2 * pad
 
         // ---- reserved edges
-        val islandW = 28f * d
-        val islandGutter = islandW + 8f * d
+        val islandW = 124f * d
+        val islandH = 34f * d
         var resL = ins.left + 6f * d
         var resR = ins.right + 6f * d
-        var resT = ins.top + 8f * d
+        val island = FRect.xywh(w / 2f - islandW / 2f, ins.top + 6f * d, islandW, islandH)
+        var resT = island.b + 10f * d
         var resB = ins.bottom + 6f * d
 
         val dockRect: FRect
@@ -145,7 +146,6 @@ object GeometryEngine {
             dockRect = FRect.xywh(cx - len / 2f, y, len, dockThick)
             resB += dockThick + margin * 1.4f
         }
-        if (islandRight) resR += islandGutter else resL += islandGutter
 
         val dockSlots = ArrayList<FRect>(n)
         for (i in 0 until n) {
@@ -205,10 +205,6 @@ object GeometryEngine {
         val labelGap = if (inp.showLabels) 5f * d else 0f
         val grids = chooseGrids(panes, cap, labelH + labelGap, d)
 
-        // ---- island (vertical glass pill on the edge opposite the dock)
-        val islandH = 92f * d
-        val islandX = if (islandRight) w - ins.right - 4f * d - islandW else ins.left + 4f * d
-        val island = FRect.xywh(islandX, ins.top + 14f * d, islandW, islandH)
 
         return Geo(
             inp, duo, stacked, dockVertical, dockRight, dockRect, dockIcon, dockSlots,

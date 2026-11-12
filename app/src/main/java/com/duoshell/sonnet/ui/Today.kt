@@ -80,7 +80,7 @@ fun TodayPane(c: LauncherController, modifier: Modifier = Modifier) {
 @Composable
 private fun Card(title: String?, content: @Composable () -> Unit) {
     val t = LocalGlass.current
-    GlassSurface(Modifier.fillMaxWidth()) {
+    GlassSurface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (title != null) BasicText(title.uppercase(), style = txt(11.sp, t.panelSecondary, FontWeight.SemiBold))
             content()
@@ -191,7 +191,7 @@ private fun AppWidgetCard(c: LauncherController, item: TodayItem) {
     }
     val density = ctx.resources.displayMetrics.density
     val h: Dp = (info.minHeight / density).dp.coerceIn(70.dp, 320.dp)
-    GlassSurface(Modifier.fillMaxWidth().height(h)) {
+    GlassSurface(Modifier.fillMaxWidth().height(h), shape = RoundedCornerShape(24.dp)) {
         AndroidView(
             factory = { context: android.content.Context -> c.widgets.createView(context, id, info) as AppWidgetHostView },
             modifier = Modifier.fillMaxSize(),

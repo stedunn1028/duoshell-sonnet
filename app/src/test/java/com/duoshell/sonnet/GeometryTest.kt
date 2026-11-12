@@ -32,7 +32,9 @@ class GeometryTest {
         val g = GeometryEngine.compute(input(2184f, 1968f, hinge))
         assertTrue(g.duo)
         assertEquals(2, g.panes.size)
-        assertTrue(g.dockVertical)
+        assertFalse("AUTO dock is an iOS-style bottom dock", g.dockVertical)
+        assertEquals(g.width / 2f, g.island.cx, 0.5f)
+        assertTrue(g.panes.all { it.t >= g.island.b })
         val hx = hinge.bounds.cx
         assertTrue("left pane stays left of hinge", g.panes[0].r <= hx)
         assertTrue("right pane stays right of hinge", g.panes[1].l >= hx)
@@ -83,7 +85,7 @@ class GeometryTest {
     }
 
     @Test fun sideDockShrinksIconsInShortLandscape() {
-        val g = GeometryEngine.compute(input(2340f, 1080f, dockCount = 6, ins = EdgeInsets(0f, 60f, 0f, 60f)))
+        val g = GeometryEngine.compute(input(2340f, 1080f, dock = DockPlacement.SIDE, dockCount = 6, ins = EdgeInsets(0f, 60f, 0f, 60f)))
         assertFalse(g.duo)
         assertTrue(g.dockVertical)
         assertTrue(g.dockRect.t >= 0f && g.dockRect.b <= 1080f)

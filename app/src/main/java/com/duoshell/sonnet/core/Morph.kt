@@ -98,7 +98,9 @@ object Morph {
     fun durationMs(intensity: Int) = when (intensity) { 0 -> 0; 1 -> 360; 3 -> 820; else -> 580 }
     fun staggerFor(intensity: Int) = when (intensity) { 0 -> 0f; 1 -> 0.10f; 3 -> 0.30f; else -> 0.20f }
     fun curveFor(intensity: Int) = if (intensity >= 3) Curve.OVERSHOOT else Curve.FAST_OUT_SLOW_IN
-    fun blurRadiusDp(intensity: Int) = when (intensity) { 0, 1 -> 0f; 2 -> 10f; else -> 16f }
+    fun blurRadiusDp(intensity: Int) = when (intensity) { 0 -> 0f; 1 -> 8f; 2 -> 20f; else -> 30f }
+    /** Peak opacity of the frosted veil that clears outward from the hinge. */
+    fun veilAlpha(intensity: Int) = when (intensity) { 0 -> 0f; 1 -> 0.18f; 2 -> 0.30f; else -> 0.40f }
 }
 
 object Placements {

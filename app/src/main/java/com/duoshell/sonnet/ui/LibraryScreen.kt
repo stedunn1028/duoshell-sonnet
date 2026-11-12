@@ -6,6 +6,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -80,7 +82,7 @@ fun LibraryPane(c: LauncherController, modifier: Modifier = Modifier) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
             items(cats, key = { it.first }) { (name, apps) -> CategoryCard(c, name, apps.map { it.key }) }
@@ -92,17 +94,26 @@ fun LibraryPane(c: LauncherController, modifier: Modifier = Modifier) {
 @Composable
 private fun CategoryCard(c: LauncherController, name: String, keys: List<String>) {
     val t = LocalGlass.current
-    GlassSurface(Modifier.fillMaxWidth().tap({ c.categoryName = name; c.panel = Panel.CATEGORY }, "$name, ${keys.size} apps"), shape = RoundedCornerShape(26.dp)) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (row in keys.take(4).chunked(2)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    for (k in row) AppIconImage(c, k, 40.dp)
+    Column(Modifier.fillMaxWidth().tap({ c.categoryName = name; c.panel = Panel.CATEGORY }, "$name, ${keys.size} apps")) {
+        BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(1f)) {
+            val pad = 12.dp
+            val gap = 8.dp
+            val icon = (maxWidth - pad * 2 - gap) / 2
+            GlassSurface(Modifier.fillMaxSize(), shape = RoundedCornerShape(28.dp)) {
+                Column(Modifier.fillMaxSize().padding(pad), verticalArrangement = Arrangement.spacedBy(gap)) {
+                    for (row in keys.take(4).chunked(2)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                            for (k in row) AppIconImage(c, k, icon)
+                            if (row.size == 1) Spacer(Modifier.size(icon))
+                        }
+                    }
                 }
             }
-            if (keys.size <= 2) Spacer(Modifier.height(48.dp))
-            else if (keys.size <= 0) Spacer(Modifier.height(1.dp))
-            BasicText(name, style = txt(12.sp, t.panelText, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        BasicText(
+            name, Modifier.fillMaxWidth().padding(top = 6.dp),
+            style = txt(12.sp, Color.White, FontWeight.Medium, shadow = true).copy(textAlign = TextAlign.Center), maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

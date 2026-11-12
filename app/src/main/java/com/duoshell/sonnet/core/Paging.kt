@@ -20,6 +20,12 @@ object Paging {
         return maxOf(1, (needed + capacity - 1) / capacity)
     }
 
+    /** Home pages are always an even number (min 2) so two-page spreads pair up: [Today|P1] [P2|P3] ... [Pn|Library]. */
+    fun pairedPageCount(appCount: Int, capacity: Int, editing: Boolean): Int {
+        val pc = pageCount(appCount, capacity, editing)
+        return maxOf(2, pc + (pc % 2))
+    }
+
     fun paneCount(pageCount: Int) = pageCount + 2
 
     fun kind(pane: Int, pageCount: Int): PaneKind = when {

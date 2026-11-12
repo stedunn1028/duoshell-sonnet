@@ -34,6 +34,9 @@ class MorphAndPagingTest {
         assertEquals(1, Paging.pageCount(0, 24, false))
         assertEquals(2, Paging.pageCount(25, 24, false))
         assertEquals(2, Paging.pageCount(24, 24, true)) // trailing empty page while editing
+        assertEquals(2, Paging.pairedPageCount(0, 24, false)) // pages always pair up for two-page spreads
+        assertEquals(4, Paging.pairedPageCount(49, 24, false)) // 3 pages -> 4
+        assertEquals(2, Paging.pairedPageCount(48, 24, false))
     }
 
     @Test fun moveKeepsOrderOtherwise() {

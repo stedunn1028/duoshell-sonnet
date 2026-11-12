@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.duoshell.sonnet.core.*
@@ -22,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
@@ -90,16 +92,21 @@ class LauncherController(private val app: Application) {
     // ---- lifecycle
     fun start() {
         repo.start(); battery.start(); widgets.start(); media.start()
+        // first load seeds Home/Dock; later changes (installs/uninstalls) prune unavailable apps
+        loadJob?.cancel()
+        loadJob = scope.launch { snapshotFlow { repo.loaded to repo.apps }.collect { (loaded, _) -> if (loaded) onAppsLoaded() } }
         scope.launch {
             if (settings.wallpaper == WallpaperKind.CUSTOM) loadCustomWallpaper(settings.customWallpaperUri)
         }
         scope.launch { while (true) { tick(); delay(20_000) } }.also { tickJob?.cancel(); tickJob = it }
     }
     private var tickJob: Job? = null
+    private var loadJob: Job? = null
 
     fun stop() {
         repo.stop(); battery.stop(); widgets.stop(); media.stop()
         tickJob?.cancel(); tickJob = null
+        loadJob?.cancel(); loadJob = null
     }
 
     private fun tick() {

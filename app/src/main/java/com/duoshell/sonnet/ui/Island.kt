@@ -61,7 +61,6 @@ fun DynamicIsland(c: LauncherController, geo: Geo, view: ViewParams) {
     val exp by animateFloatAsState(if (expanded) 1f else 0f, spring(0.82f, Spring.StiffnessMediumLow), label = "islandExp")
     val x by animateFloatAsState(r.l, spring(0.9f, Spring.StiffnessLow), label = "islandX")
     val y by animateFloatAsState(r.t, spring(0.9f, Spring.StiffnessLow), label = "islandY")
-    val onRight = geo.islandRight
     val d = geo.input.density
 
     val now = c.nowMs
@@ -76,54 +75,50 @@ fun DynamicIsland(c: LauncherController, geo: Geo, view: ViewParams) {
         append(". Double tap to ").append(if (expanded) "collapse" else "expand")
     }
 
-    // ---------- compact capsule
-    val pillAlpha = 1f - exp
+    // ---------- compact capsule: clock on the left, battery (or media / scene glyph) on the right
     Box(
         Modifier
             .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
             .size(with(density) { r.w.toDp() }, with(density) { r.h.toDp() })
-            .graphicsLayer { alpha = pillAlpha; val s = 1f - 0.1f * exp; scaleX = s; scaleY = s }
+            .graphicsLayer { alpha = 1f - exp; val s = 1f - 0.08f * exp; scaleX = s; scaleY = s }
             .semantics { contentDescription = a11y }
             .tap({ c.islandOpen = true; c.menu = null }, a11y),
     ) {
-        GlassSurface(Modifier.fillMaxSize(), shape = GlassPill, tint = Color.Black.copy(alpha = 0.35f)) {
-            Column(
-                Modifier.fillMaxSize().padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.SpaceBetween,
-                horizontalAlignment = Alignment.CenterHorizontally,
+        GlassSurface(Modifier.fillMaxSize(), shape = GlassPill, tint = Color.Black.copy(alpha = 0.62f)) {
+            Row(
+                Modifier.fillMaxSize().padding(horizontal = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    BasicText(Fmt.hour(ctx, now), style = txt(11.sp, Color.White, FontWeight.Bold))
-                    BasicText(Fmt.minute(now), style = txt(11.sp, Color.White.copy(alpha = 0.85f), FontWeight.Medium))
-                }
+                BasicText(Fmt.time(ctx, now), style = txt(13.sp, Color.White, FontWeight.SemiBold))
                 if (media != null && media.playing) {
-                    BasicText("♪", style = txt(13.sp, Color(0xFF30D158), FontWeight.Bold))
+                    BasicText("\u266A", style = txt(14.sp, Color(0xFF30D158), FontWeight.Bold))
                 } else if (scene != null) {
-                    BasicText(scene.glyph, style = txt(12.sp, Color(scene.accent), FontWeight.Bold))
-                } else Spacer(Modifier.height(1.dp))
+                    BasicText(scene.glyph, style = txt(13.sp, Color(scene.accent), FontWeight.Bold))
+                }
                 BatteryGlyph(batt.percent, batt.charging)
             }
         }
     }
 
-    // ---------- transient toast capsule (horizontal), growing out of the island towards the content
+    // ---------- transient toast capsule, dropping out of the island
     if (toast != null && exp < 0.5f) {
-        val tw = 190.dp
-        val th = 46.dp
+        val tw = 230.dp
+        val th = 48.dp
         val twPx = with(density) { tw.toPx() }
-        val tx = if (onRight) r.l - twPx - 6f * d else r.r + 6f * d
+        val tx = r.cx - twPx / 2f
         var shown by androidx.compose.runtime.remember(toast.id) { androidx.compose.runtime.mutableStateOf(0f) }
         androidx.compose.runtime.LaunchedEffect(toast.id) { shown = 1f }
         val alpha by animateFloatAsState(shown, tween(220), label = "toastA")
         Box(
             Modifier
-                .offset { IntOffset(tx.roundToInt(), (r.t + 2f * d).roundToInt()) }
+                .offset { IntOffset(tx.roundToInt(), (r.b + 8f * d).roundToInt()) }
                 .size(tw, th)
-                .graphicsLayer { this.alpha = alpha; transformOrigin = TransformOrigin(if (onRight) 1f else 0f, 0.5f) }
+                .graphicsLayer { this.alpha = alpha; transformOrigin = TransformOrigin(0.5f, 0f); val s = 0.85f + 0.15f * alpha; scaleX = s; scaleY = s }
                 .semantics { contentDescription = toast.title + if (toast.detail.isNotEmpty()) ", " + toast.detail else "" },
         ) {
-            GlassSurface(Modifier.fillMaxSize(), shape = GlassPill, tint = Color.Black.copy(alpha = 0.4f)) {
-                Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.Center) {
+            GlassSurface(Modifier.fillMaxSize(), shape = GlassPill, tint = Color.Black.copy(alpha = 0.62f)) {
+                Column(Modifier.fillMaxSize().padding(horizontal = 18.dp), verticalArrangement = Arrangement.Center) {
                     BasicText(toast.title, style = txt(13.sp, Color.White, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (toast.detail.isNotEmpty()) BasicText(toast.detail, style = txt(11.sp, Color(0xCCFFFFFF), FontWeight.Normal), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
@@ -131,13 +126,11 @@ fun DynamicIsland(c: LauncherController, geo: Geo, view: ViewParams) {
         }
     }
 
-    // ---------- expanded panel
+    // ---------- expanded panel (opaque enough to read over any page)
     if (exp > 0.01f) {
-        val panelW = minOf(300f * d, geo.width - 24f * d)
-        val panelLeft = if (onRight) (r.r - panelW).coerceAtLeast(8f * d) else r.l.coerceAtMost(geo.width - panelW - 8f * d)
-        Box(
-            Modifier.fillMaxSize().graphicsLayer { alpha = exp }.tap({ c.islandOpen = false }, "Close status panel"),
-        )
+        val panelW = minOf(340f * d, geo.width - 24f * d)
+        val panelLeft = r.cx - panelW / 2f
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = exp }.tap({ c.islandOpen = false }, "Close status panel"))
         Box(
             Modifier
                 .offset { IntOffset(panelLeft.roundToInt(), r.t.roundToInt()) }
@@ -145,14 +138,15 @@ fun DynamicIsland(c: LauncherController, geo: Geo, view: ViewParams) {
                 .consumeTaps()
                 .graphicsLayer {
                     alpha = exp
-                    transformOrigin = TransformOrigin(if (onRight) 1f else 0f, 0f)
-                    val s = 0.6f + 0.4f * exp
+                    transformOrigin = TransformOrigin(0.5f, 0f)
+                    val s = 0.5f + 0.5f * exp
                     scaleX = s; scaleY = s
                 },
         ) {
-            GlassSurface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(30.dp), strongShadow = true) {
-                IslandPanel(c)
-            }
+            GlassSurface(
+                Modifier.fillMaxWidth(), shape = RoundedCornerShape(32.dp), strongShadow = true,
+                tint = if (t.dark) Color(0xE8101319) else Color(0xE8F6F7FB),
+            ) { IslandPanel(c) }
         }
     }
 }
@@ -160,17 +154,16 @@ fun DynamicIsland(c: LauncherController, geo: Geo, view: ViewParams) {
 @Composable
 private fun BatteryGlyph(pct: Int, charging: Boolean) {
     val low = pct <= 15 && !charging
-    Canvas(Modifier.size(10.dp, 18.dp)) {
-        val w = size.width
+    Canvas(Modifier.size(24.dp, 12.dp)) {
+        val w = size.width - 2.dp.toPx()
         val h = size.height
-        val body = Size(w, h - 2.dp.toPx())
-        drawRoundRect(Color.White.copy(alpha = 0.4f), Offset(0f, 2.dp.toPx()), body, CornerRadius(2.5.dp.toPx()))
-        val fh = body.height * (pct / 100f).coerceIn(0.06f, 1f)
+        drawRoundRect(Color.White.copy(alpha = 0.38f), Offset(0f, 0f), Size(w, h), CornerRadius(3.5.dp.toPx()))
+        val fw = (w - 3.dp.toPx()) * (pct / 100f).coerceIn(0.06f, 1f)
         drawRoundRect(
             if (charging) Color(0xFF30D158) else if (low) Color(0xFFFF453A) else Color.White,
-            Offset(0f, 2.dp.toPx() + body.height - fh), Size(w, fh), CornerRadius(2.5.dp.toPx()),
+            Offset(1.5.dp.toPx(), 1.5.dp.toPx()), Size(fw, h - 3.dp.toPx()), CornerRadius(2.dp.toPx()),
         )
-        drawRoundRect(Color.White.copy(alpha = 0.6f), Offset(w * 0.3f, 0f), Size(w * 0.4f, 2.dp.toPx()), CornerRadius(1.dp.toPx()))
+        drawRoundRect(Color.White.copy(alpha = 0.5f), Offset(w + 0.5.dp.toPx(), h * 0.3f), Size(1.5.dp.toPx(), h * 0.4f), CornerRadius(1.dp.toPx()))
     }
 }
 
