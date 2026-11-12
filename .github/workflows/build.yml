@@ -1,0 +1,168 @@
+name: Build DuoShell Sonnet
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      export_keystore:
+        description: "One-time: upload the signing keystore as a 1-day artifact so you can save it as the KEYSTORE_B64 secret (see docs/SIGNING.md)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # only used to attach the APK to a pre-release on pushes to main
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GRADLE_VERSION: "8.10.2"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
+
+      # The Gradle wrapper jar is not committed (binary), so CI installs a pinned Gradle instead.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+
+      # ---------- signing: one stable certificate across builds, never committed ----------
+      - name: Restore generated signing key (fallback when no secret is set)
+        id: kscache
+        uses: actions/cache@v4
+        with:
+          path: ~/.duoshell-ci-key
+          key: duoshell-ci-key-v1
+
+      - name: Prepare signing key
+        id: sign
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          SECRET_STORE_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          SECRET_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          SECRET_KEY_PASS: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KS="$RUNNER_TEMP/duoshell-signing.jks"
+          if [ -n "${KEYSTORE_B64:-}" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$KS"
+            STORE_PASS="$SECRET_STORE_PASS"; ALIAS="${SECRET_KEY_ALIAS:-duoshell}"; KEY_PASS="${SECRET_KEY_PASS:-$SECRET_STORE_PASS}"
+            echo "source=secret" >> "$GITHUB_OUTPUT"
+          else
+            D="$HOME/.duoshell-ci-key"
+            mkdir -p "$D"
+            if [ ! -f "$D/duoshell.jks" ]; then
+              head -c 24 /dev/urandom | base64 | tr -d '=+/' > "$D/pass.txt"
+              keytool -genkeypair -keystore "$D/duoshell.jks" -alias duoshell -keyalg RSA -keysize 2048 \
+                -validity 10000 -storepass "$(cat "$D/pass.txt")" -keypass "$(cat "$D/pass.txt")" \
+                -dname "CN=DuoShell Sonnet CI, O=DuoShell" >/dev/null
+              echo "source=generated-new" >> "$GITHUB_OUTPUT"
+            else
+              echo "source=cache" >> "$GITHUB_OUTPUT"
+            fi
+            cp "$D/duoshell.jks" "$KS"
+            STORE_PASS="$(cat "$D/pass.txt")"; ALIAS=duoshell; KEY_PASS="$STORE_PASS"
+          fi
+          echo "::add-mask::$STORE_PASS"
+          echo "::add-mask::$KEY_PASS"
+          {
+            echo "DUOSHELL_KEYSTORE_PATH=$KS"
+            echo "DUOSHELL_KEYSTORE_PASSWORD=$STORE_PASS"
+            echo "DUOSHELL_KEY_ALIAS=$ALIAS"
+            echo "DUOSHELL_KEY_PASSWORD=$KEY_PASS"
+          } >> "$GITHUB_ENV"
+          FP=$(keytool -list -v -keystore "$KS" -storepass "$STORE_PASS" -alias "$ALIAS" | grep 'SHA256:' | head -1 | sed 's/^ *//')
+          echo "fingerprint=$FP" >> "$GITHUB_OUTPUT"
+
+      - name: Export keystore (explicit opt-in)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.export_keystore }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/export"
+          base64 -w0 "$DUOSHELL_KEYSTORE_PATH" > "$RUNNER_TEMP/export/KEYSTORE_B64.txt"
+          printf 'KEYSTORE_PASSWORD=%s\nKEY_ALIAS=%s\nKEY_PASSWORD=%s\n' "$DUOSHELL_KEYSTORE_PASSWORD" "$DUOSHELL_KEY_ALIAS" "$DUOSHELL_KEY_PASSWORD" > "$RUNNER_TEMP/export/passwords.txt"
+      - name: Upload keystore export (1 day)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.export_keystore }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: signing-key-export-DELETE-AFTER-SAVING
+          path: ${{ runner.temp }}/export/
+          retention-days: 1
+
+      # ---------- verify ----------
+      - name: Unit tests
+        run: gradle --no-daemon testDebugUnitTest --stacktrace
+
+      - name: Build debug APK
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Lint
+        run: gradle --no-daemon lintDebug --stacktrace
+
+      - name: Collect APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/DuoShell-Sonnet-debug-${{ github.run_number }}.apk"
+          ls -l dist
+
+      - name: Verify APK signature
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort | tail -1)
+          "$APKSIGNER" verify --print-certs dist/*.apk | head -5
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DuoShell-Sonnet-debug-apk
+          path: dist/*.apk
+          if-no-files-found: error
+
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-debug.xml
+          if-no-files-found: ignore
+
+      - name: Pre-release with APK (phone-friendly download)
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${{ github.run_number }}" dist/*.apk \
+            --prerelease --title "DuoShell Sonnet build ${{ github.run_number }}" \
+            --notes "Debug build of commit ${GITHUB_SHA::7}. Signing certificate ${{ steps.sign.outputs.fingerprint }}. Install steps: docs/INSTALL.md"
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## DuoShell Sonnet"
+            echo "- Signing key source: \`${{ steps.sign.outputs.source }}\`"
+            echo "- Certificate: \`${{ steps.sign.outputs.fingerprint }}\`"
+            echo "- Install on your phone: open this run (or the Releases page) in your phone browser, download the APK, tap it, allow installs from your browser if asked. Details in docs/INSTALL.md."
+            if [ "${{ steps.sign.outputs.source }}" != "secret" ]; then
+              echo "- ⚠️ No \`KEYSTORE_B64\` secret set: using a key kept in the Actions cache. If that cache is evicted, the next build gets a new certificate and Android will refuse to update in place (uninstall first). See docs/SIGNING.md to pin a permanent key."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
